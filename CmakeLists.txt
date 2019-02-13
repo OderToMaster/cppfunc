@@ -1,4 +1,5 @@
 ﻿cmake_minimum_required(VERSION 3.2)
+add_definitions(-std=c++11)
 PROJECT(testbench)
 INCLUDE_DIRECTORIES(include)
 AUX_SOURCE_DIRECTORY(src DIR_SRCS)

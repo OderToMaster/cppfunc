@@ -17,7 +17,9 @@ int main(int argc,char*argv[]){
 		.split<std::string>([](char ch)->bool { return !std::isdigit(ch);  })
 		.map([](const std::string&v)->int{return std::stoi(v);})
 		.collect<std::list<int>>();
-	std::cout.write(vec.data(), vec.size()) << std::endl;
+	auto spliter = mapper.split<std::string>([](char ch) -> bool { return !std::isdigit(ch); });
+	auto spmapper = spliter.map([](const std::string &v) -> int { return std::stoi(v); });
+	std::cout.write(vec.data(), vec.size())<< std::endl;
 	std::ostream_iterator<int> out(std::cout," ");
 	std::copy(std::begin(lst),std::end(lst),out);
 	return 0;
