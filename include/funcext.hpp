@@ -33,26 +33,39 @@ namespace stle {
 		auto collect()const ->OutContainer {
 			return make_collect<OutContainer>(std::move(*(Wrapper*)(this)));
 		}
+		template <typename F>
+		void for_each(F&&f)const{
+			auto &wrapper = *(Wrapper *)(this);
+			while (wrapper)
+			{
+				//*(++outer) = *(wrapper);
+				f(*wrapper);
+				++wrapper;
+			}
+		}
 	};
 	template<typename Wrapper>
 	class SplitMixture{
 		public:
-		  //template <typename OutContainer£¬typename F>
-		  //auto split(F &&f) const -> decltype(make_split<OutContainer>(std::move(*(Wrapper * (this))), std::forward<F>(f))){
-		  //	  return make_split<OutContainer>(std::move(*(Wrapper * (this))), std::forward<F>(f));
-		 //}
+		 
 		  template<class Container,class F>
 		  auto split(F&&f)const {
 			  return make_split<Container>(std::move(*(Wrapper *)(this)), std::forward<F>(f));
 		  }
 	};
+	template<typename Implatment>
+	class BaseWrapper ://public std::iterator<std::forward_iterator_tag, typename std::result_of_t<F> >,
+		public MapMixture<Implatment>,
+		public FilterMixture<Implatment>,
+		public ReduceMixture<Implatment>,
+		public CollectMixture<Implatment>,
+		public SplitMixture<Implatment> {
+
+	};
 	template <typename Iter>
-	class StreamWrapper : public std::iterator<std::forward_iterator_tag, typename std::iterator_traits<Iter>::value_type>,
-						  public MapMixture<StreamWrapper<Iter>>,
-						  public FilterMixture<StreamWrapper<Iter>>,
-						  public ReduceMixture<StreamWrapper<Iter>>,
-						  public CollectMixture<StreamWrapper<Iter>>,
-						  public SplitMixture<StreamWrapper<Iter>>
+	class StreamWrapper :
+		public BaseWrapper<StreamWrapper<Iter>>,
+	 	public std::iterator<std::forward_iterator_tag, typename std::iterator_traits<Iter>::value_type>
 	{
 	  protected:
 		mutable Iter bp;
@@ -73,13 +86,15 @@ namespace stle {
 		}
 	
 	};
-	template <typename LastWrapper, typename F>
-	class MapWrapper : public std::iterator<std::forward_iterator_tag, typename std::result_of<std::remove_all_extents_t<F>>>,
+	template <typename LastWrapper, typename Ret,typename F>
+	class MapWrapper : public BaseWrapper<MapWrapper<LastWrapper,Ret, F>>,
+					   public std::iterator<std::forward_iterator_tag,Ret>
+	/* public std::iterator<std::forward_iterator_tag, typename std::result_of<std::remove_all_extents_t<F>>>,
 					   public MapMixture<MapWrapper<LastWrapper, F>>,
 					   public FilterMixture<MapWrapper<LastWrapper, F>>,
 					   public ReduceMixture<MapWrapper<LastWrapper, F>>,
 					   public CollectMixture<MapWrapper<LastWrapper, F>>,
-					   public SplitMixture<MapWrapper<LastWrapper, F>>
+					   public SplitMixture<MapWrapper<LastWrapper, F>>*/
 	{
 	  protected:
 		mutable LastWrapper wrapper;
@@ -101,12 +116,9 @@ namespace stle {
 	
 	};
 	template <typename LastWrapper, typename F>
-	class FilterWrapper : public std::iterator<std::forward_iterator_tag, typename std::iterator_traits<LastWrapper>::value_type>,
-						  public MapMixture<FilterWrapper<LastWrapper, F>>,
-						  public FilterMixture<FilterWrapper<LastWrapper, F>>,
-						  public ReduceMixture<FilterWrapper<LastWrapper, F>>,
-						  public CollectMixture<FilterWrapper<LastWrapper, F>>,
-						  public SplitMixture<FilterWrapper<LastWrapper, F>>
+	class FilterWrapper :
+		public BaseWrapper<FilterWrapper<LastWrapper, F>>,
+	 	public std::iterator<std::forward_iterator_tag, typename std::iterator_traits<LastWrapper>::value_type>
 	{
 	  public:
 		
@@ -132,51 +144,55 @@ namespace stle {
 		std::remove_all_extents_t<F> f;
 	};
 	template <typename OutContainer, typename LastWrapper, typename F>
-	class SplitWrapper : public std::iterator<std::forward_iterator_tag, typename std::iterator_traits<LastWrapper>::value_type>,
-						 public MapMixture<SplitWrapper<OutContainer, LastWrapper, F>>,
-						 public FilterMixture<SplitWrapper<OutContainer, LastWrapper, F>>,
-						 public ReduceMixture<SplitWrapper<OutContainer, LastWrapper, F>>,
-						 public CollectMixture<SplitWrapper<OutContainer, LastWrapper, F>>,
-						 public SplitMixture<SplitWrapper<OutContainer, LastWrapper, F>>
+	class SplitWrapper : public BaseWrapper<SplitWrapper<OutContainer, LastWrapper, F>>,
+	 public std::iterator<std::forward_iterator_tag, typename OutContainer>
 	{
 	  public:
+		//using value_type = OutContainer;
 		SplitWrapper(LastWrapper &&wrapper, const F &f) : wrapper(std::move(wrapper)), f(f) {}
 		SplitWrapper(SplitWrapper&&spwrapper):wrapper(std::move(spwrapper.wrapper)),f(std::move(f)){}
 		operator bool() const
 		{
+			
+			while (wrapper && std::invoke(f, *wrapper)) ++wrapper;
 			return wrapper;
 		}
 		SplitWrapper& operator++(){
-			if(!wrapper){
-				return *this;
-			}
-			++wrapper;
-			//auto outIter = std::back_inserter(container);
-			//while (wrapper && !std::invoke(f, *wrapper)){
-			//	*(++outIter) = *wrapper;
-			//	++wrapper;
+			//if(!wrapper){
+			//	return *this;
 			//}
+			//++wrapper;
+			auto v = std::move(container);
+			while (wrapper && std::invoke(f, *wrapper)) ++wrapper;
+			auto outIter = std::back_inserter(container);
+			while (wrapper && !std::invoke(f, *wrapper)){
+				*(++outIter) = std::move(*wrapper);
+				++wrapper;
+			}
 			return *this;
 		}
-		auto operator*() const->OutContainer{
+		auto operator*() const->OutContainer&{
 			auto outIter = std::back_inserter(container);
-			while (wrapper && std::invoke(f, *wrapper)) ++wrapper;
-			while (wrapper && !std::invoke(f, *wrapper))
+			//while (wrapper && std::invoke(f, *wrapper)) ++wrapper;
+			while (isBegin&&wrapper && !std::invoke(f, *wrapper))
 			{
-					*(++outIter) = *wrapper;
+					*(++outIter) = std::move(*wrapper);
 					++wrapper;
 			}
-			return std::move(container);
+			isBegin = false;
+			return container;
 		}
 		protected :
 			mutable LastWrapper wrapper;
 			std::remove_all_extents_t<F> f;
 			mutable OutContainer container;
+			mutable bool    isBegin{ true };
 	};
 		template <typename LastWrapper, typename F>
 		auto make_map(LastWrapper &&wrapper, F &&f)
 		{
-			return MapWrapper<LastWrapper, F>(std::forward<LastWrapper>(wrapper), std::forward<F>(f));
+			using Ret = decltype(f(*wrapper));
+			return MapWrapper<LastWrapper,Ret, F>(std::forward<LastWrapper>(wrapper), std::forward<F>(f));
 		}
 		template <typename LastWrapper, typename F>
 		auto make_filter(LastWrapper &&wrapper, F &&f)
@@ -192,7 +208,7 @@ namespace stle {
 			Value ret = std::forward<Value>(v);
 			while (wrapper)
 			{
-				ret = std::invoke(f, ret, *wrapper);
+				ret = std::invoke(f, ret, std::move(*wrapper));
 				++wrapper;
 			}
 			return std::move(ret);
@@ -204,7 +220,7 @@ namespace stle {
 			auto outer = std::back_inserter(container);
 			while (wrapper)
 			{
-				*(++outer) = *(wrapper);
+				*(++outer) = std::move(*(wrapper));
 				++wrapper;
 			}
 			return std::move(container);
@@ -214,6 +230,10 @@ namespace stle {
 		{
 			using Iter = decltype(std::begin(container));
 			return StreamWrapper<Iter>(std::begin(container), std::end(container));
+		}
+		template<typename Iterator>
+		auto to_range(Iterator bit,Iterator eit)->StreamWrapper<Iterator>{
+			return StreamWrapper<Iterator>(bit,eit);
 		}
 
 		template <typename OutContainer, typename LastWrapper, typename F>
